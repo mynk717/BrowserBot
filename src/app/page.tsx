@@ -38,8 +38,12 @@ export default function Home() {
   }
 
   return (
-    <main className="min-h-screen flex flex-col items-center justify-start bg-gradient-to-br from-gray-50 to-gray-100 px-4 py-12">
-      <h1 className="text-4xl font-bold mb-10 tracking-tight">BrowserBot Demo</h1>
+    <main className="min-h-screen flex flex-col items-center justify-start bg-gradient-to-br from-white-500 to-gray-700 px-4 py-12">
+      <h1 className="text-4xl font-extrabold mb-10 bg-gradient-to-r from-black via-yellow-400 via-gray-500 to-orange-500 bg-clip-text text-transparent">
+  BrowserBot
+</h1>
+
+
 
       {/* card */}
       <form
@@ -82,6 +86,7 @@ export default function Home() {
         <pre className="mt-6 w-full max-w-3xl bg-gray-900 text-green-300 rounded-xl p-6 overflow-x-auto text-sm whitespace-pre-wrap">
 {JSON.stringify(response, null, 2)}
         </pre>
+
       )}
     </main>
   );

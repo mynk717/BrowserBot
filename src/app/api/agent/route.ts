@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
     });
 
     const page = await browser.newPage();
-    await page.goto(url, { waitUntil: 'networkidle' });
+    await page.goto(url, { waitUntil: 'networkidle', timeout: 60000 });
 
     const buffer = await page.screenshot({ fullPage: true });
     screenshotBase64 = buffer.toString('base64');
