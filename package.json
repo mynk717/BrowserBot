@@ -10,6 +10,7 @@
     "vercel-prebuild": "npx playwright install chromium --with-deps"
   },
   "dependencies": {
+    "@playwright/test": "^1.55.0",
     "autoprefixer": "^10.4.21",
     "firebase": "^12.1.0",
     "firebase-admin": "^13.4.0",
