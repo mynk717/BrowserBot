@@ -6,6 +6,7 @@ const nextConfig: NextConfig = {
    * `turbopack`, not `experimental`.
    * We also keep Playwright out of the bundle.
    */
+    reactStrictMode: false,
   turbopack: {
     // future Turbopack rules can go here
   },
