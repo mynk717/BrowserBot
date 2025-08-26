@@ -43,7 +43,7 @@ export default function Home() {
                 throw new Error(errorData.error || 'Something went wrong');
             }
 
-            const data: ApiResponse = await res.json();
+            const data = (await res.json()) as ApiResponse;
             setResponse(data);
             console.log('Agent Response:', data);
 
