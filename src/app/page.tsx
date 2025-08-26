@@ -1,33 +1,15 @@
 'use client';
 
 import { useState } from 'react';
-import Image from 'next/image';
-
-// ---------- API response shape ----------
-interface ApiResponse {
-  aiResponse?: string;
-  screenshot?: string;
-  initialScreenshot?: string;
-  finalScreenshot?: string;
-  intermediateScreenshots?: string[];
-  executionLog?: string[];
-  successAnalysis?: string;
-  status: 'success' | 'failed' | 'partial_success';
-  actionsExecuted?: number;
-  error?: string;
-}
 
 export default function Home() {
   const [url, setUrl] = useState('https://ui.chaicode.com');
-  const [prompt, setPrompt] = useState(
-    'Locate the authentication form automatically, fill in the necessary details, and click the submit button.',
-  );
+  const [prompt, setPrompt] = useState('Locate the auth form and fill test data');
   const [loading, setLoading] = useState(false);
-  const [response, setResponse] = useState<ApiResponse | null>(null);
+  const [response, setResponse] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // ---------------- form submit ----------------
-  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     setError(null);
@@ -37,29 +19,51 @@ export default function Home() {
       const res = await fetch('/api/agent', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url, prompt }),
+        body: JSON.stringify({ url, prompt })
       });
-
-      if (!res.ok) {
-        const { error: msg } = (await res.json()) as { error?: string };
-        throw new Error(msg || 'Request failed');
-      }
-
-      const data = (await res.json()) as ApiResponse;  // ✅ typed
-      setResponse(data);
-      console.log('Agent Response:', data);
-    } catch (error) {
-      const err = error as Error;                      // ✅ no-explicit-any
-      setError(err.message);
-      console.error('Frontend Error:', err);
-    } finally {
+      const json = await res.json();
+      setResponse(json);
+    } catch (err: unknown) {
+    const error = err as Error;
+    setError(error.message);
+  } finally {
       setLoading(false);
     }
-  };
+  }
 
-  // -------------- JSX below (unchanged) -------------
   return (
-    /* … your existing JSX … */
-    <div />
+    <main className="flex flex-col items-center gap-6 p-10">
+      <h1 className="text-2xl font-semibold">BrowserBot Demo</h1>
+
+      <form onSubmit={handleSubmit} className="flex flex-col gap-4 w-full max-w-md">
+        <input
+          className="border p-2 rounded"
+          value={url}
+          onChange={e => setUrl(e.target.value)}
+          placeholder="Target URL"
+        />
+        <textarea
+          className="border p-2 rounded"
+          value={prompt}
+          onChange={e => setPrompt(e.target.value)}
+          placeholder="Prompt"
+          rows={3}
+        />
+        <button
+          className="bg-black text-white px-4 py-2 rounded disabled:opacity-50"
+          disabled={loading}
+        >
+          {loading ? 'Running…' : 'Run BrowserBot'}
+        </button>
+      </form>
+
+      {error && <p className="text-red-600">{error}</p>}
+
+      {response && (
+        <pre className="w-full max-w-3xl overflow-x-auto bg-gray-100 p-4 rounded text-sm">
+{JSON.stringify(response, null, 2)}
+        </pre>
+      )}
+    </main>
   );
 }

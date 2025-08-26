@@ -1,79 +1,64 @@
+export const runtime     = 'nodejs';
+export const memory      = 1024;
+export const maxDuration = 60;
+
 import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
-import { chromium } from 'playwright';
 
-// ----------------- types -----------------
-type AgentBody = { url: string; prompt: string };   // now used
+type AgentBody = { url: string; prompt: string };
 
 export async function POST(req: NextRequest) {
-  let browser: Awaited<ReturnType<typeof chromium.launch>> | null = null;
+  let browser: Awaited<ReturnType<import('playwright-core').BrowserType['launch']>> | null = null;
   let screenshotBase64: string | null = null;
 
   try {
-    // --- safely parse body -----------------
     const { url, prompt } = (await req.json()) as AgentBody;
-
     if (!url || !prompt) {
-      return NextResponse.json(
-        { error: 'URL and prompt are required' },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: 'URL and prompt are required' }, { status: 400 });
     }
 
-    // --- main logic (unchanged) ------------
-    browser = await chromium.launch();
-    const page = await browser.newPage();
-    await page.goto(url);
+    const { chromium } = await import('playwright-core');
+    browser = await chromium.launch({
+      headless: true,
+      args: ['--no-sandbox', '--disable-dev-shm-usage']
+    });
 
-    const screenshotBuffer = await page.screenshot({ fullPage: true });
-    screenshotBase64 = screenshotBuffer.toString('base64');
+    const page = await browser.newPage();
+    await page.goto(url, { waitUntil: 'networkidle' });
+
+    const buffer = await page.screenshot({ fullPage: true });
+    screenshotBase64 = buffer.toString('base64');
 
     const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
     const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
       {
         role: 'user',
         content: [
-          {
-            type: 'text',
-            text: `You are an AI assistant… Current instruction: "${prompt}"`,
-          },
-          {
-            type: 'image_url',
-            image_url: { url: `data:image/jpeg;base64,${screenshotBase64}` },
-          },
-        ],
-      },
+          { type: 'text', text: `You are an AI assistant. Current instruction: "${prompt}"` },
+          { type: 'image_url', image_url: { url: `data:image/png;base64,${screenshotBase64}` } }
+        ]
+      }
     ];
 
-    const chatCompletion = await openai.chat.completions.create({
-      model: 'gpt-4-vision-preview',
+    const reply = await openai.chat.completions.create({
+      model: 'gpt-4o',
       messages,
-      max_tokens: 1_000,
+      max_tokens: 1_000
     });
-
-    const aiMessage = chatCompletion.choices[0]?.message?.content ?? '';
 
     await browser.close();
 
     return NextResponse.json({
-      aiResponse: aiMessage,
+      aiResponse: reply.choices[0]?.message?.content ?? '',
       screenshot: screenshotBase64,
-      status: 'success',
+      status: 'success'
     });
-  } catch (error) {
-    const err = error as Error;                       // ✅ no-explicit-any
-    console.error('Error in agent API:', err);
-
+  } catch (err: unknown) {
+    const error = err as Error;
     if (browser) await browser.close();
-
     return NextResponse.json(
-      {
-        error: err.message || 'Unknown error',
-        aiResponse: null,
-        initialScreenshot: screenshotBase64,
-        status: 'failed',
-      },
-      { status: 500 },
+      { error: error.message || 'Unknown error', initialScreenshot: screenshotBase64, status: 'failed' },
+      { status: 500 }
     );
   }
 }
