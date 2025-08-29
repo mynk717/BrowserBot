@@ -1,65 +1,72 @@
-export const runtime     = 'nodejs';
-export const memory      = 1024;
+export const runtime = 'nodejs';
+export const memory = 1024;
 export const maxDuration = 60;
 
 import { NextRequest, NextResponse } from 'next/server';
-import OpenAI from 'openai';
+import chromium from '@sparticuz/chromium';
+import puppeteer from 'puppeteer-core';  // ← ONLY puppeteer-core
 
-type AgentBody = { url: string; prompt: string };
+type AgentBody = { url: string; includeScreenshot?: boolean };
 
 export async function POST(req: NextRequest) {
-  let browser: Awaited<ReturnType<import('playwright-core').BrowserType['launch']>> | null = null;
-  let screenshotBase64: string | null = null;
+  let browser: any = null;
+  let shotFilled: string | undefined;
+  let shotSubmitted: string | undefined;
 
   try {
-    const { url, prompt } = (await req.json()) as AgentBody;
-    if (!url || !prompt) {
-      return NextResponse.json({ error: 'URL and prompt are required' }, { status: 400 });
+    const { url, includeScreenshot = false } = (await req.json()) as AgentBody;
+    if (!url) {
+      return NextResponse.json({ error: 'URL is required' }, { status: 400 });
     }
 
-    const { chromium } = await import('playwright-core');
-    browser = await chromium.launch({
-      headless: true,
-      args: ['--no-sandbox', '--disable-dev-shm-usage']
+    // Use puppeteer with @sparticuz/chromium (no Playwright imports)
+    browser = await puppeteer.launch({
+      args: chromium.args,
+      executablePath: await chromium.executablePath(),
+      headless: chromium.headless,
+      defaultViewport: { width: 1280, height: 720 }
     });
+
     const page = await browser.newPage();
-    await page.goto(url, { waitUntil: 'networkidle', timeout: 60000 });
+    await page.goto(url, { waitUntil: 'networkidle0', timeout: 60000 });
 
-    const buffer = await page.screenshot({ fullPage: true });
-    screenshotBase64 = buffer.toString('base64');
+    // Navigate and fill form
+    const signUpLinkSelector = 'a[href*="signup"]';
+    await page.waitForSelector(signUpLinkSelector, { timeout: 10000 });
+    await page.click(signUpLinkSelector);
+    await page.waitForNavigation({ waitUntil: 'networkidle0', timeout: 10000 });
 
-    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-    const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
-      {
-        role: 'user',
-        content: [
-          { type: 'text', text: `You are an AI assistant. Current instruction: "${prompt}"` },
-          { type: 'image_url', image_url: { url: `data:image/png;base64,${screenshotBase64}` } }
-        ]
-      }
-    ];
+    await page.waitForSelector('input[placeholder*="full name"]', { timeout: 10000 });
+    await page.type('input[placeholder*="full name"]', 'John Doe');
+    await page.type('input[placeholder*="email address"]', 'testuser@example.com');  
+    await page.type('input[placeholder*="password"]', 'Test@1234');
 
-    const reply = await openai.chat.completions.create({
-      model: 'gpt-4o',
-      messages,
-      max_tokens: 1_000
-    });
+    if (includeScreenshot) {
+      shotFilled = (await page.screenshot({ fullPage: true })).toString('base64');
+    }
+
+    await page.click('button[type="submit"]');
+    await page.waitForTimeout(2000);
+
+    if (includeScreenshot) {
+      shotSubmitted = (await page.screenshot({ fullPage: true })).toString('base64');
+    }
 
     await browser.close();
 
     return NextResponse.json({
-      aiResponse: reply.choices[0]?.message?.content ?? '',
-      screenshot: screenshotBase64,
+      message: 'Agent navigated, filled form, and submitted successfully.',
+      screenshotFilled: shotFilled,
+      screenshotSubmitted: shotSubmitted,
       status: 'success'
     });
+
   } catch (err: unknown) {
     const error = err as Error;
     if (browser) await browser.close();
     return NextResponse.json(
-      { error: error.message || 'Unknown error', initialScreenshot: screenshotBase64, status: 'failed' },
+      { error: error.message || 'Unknown error', status: 'failed' },
       { status: 500 }
     );
-  } finally {
-    if (browser) await browser.close();
   }
 }
