@@ -16,7 +16,7 @@
     "next": "15.5.0",
     "openai": "^5.15.0",
     "postcss": "^8.5.6",
-    "puppeteer": "22.5.0",
+    "puppeteer-core": "^24.17.1",
     "react": "19.1.0",
     "react-dom": "19.1.0"
   },

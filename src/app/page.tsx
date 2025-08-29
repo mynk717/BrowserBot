@@ -9,13 +9,14 @@ type AgentResponse = {
   status: 'success' | 'failed';
 };
 
-export default function Home() {                    // ← default export is a component
+export default function Home() {
   const [url,       setUrl]      = useState('https://ui.chaicode.com');
   const [prompt,    setPrompt]   = useState('Locate the auth form and fill test data');
-  const [withShot,  setWithShot] = useState(true);   // NEW checkbox
+  const [withShot,  setWithShot] = useState(true);
   const [loading,   setLoading]  = useState(false);
   const [response,  setResponse] = useState<AgentResponse | null>(null);
   const [error,     setError]    = useState<string | null>(null);
+  const [tipsOpen,  setTipsOpen] = useState(false);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -24,13 +25,19 @@ export default function Home() {                    // ← default export is a c
     setResponse(null);
 
     try {
+      /* ── call the API route ─────────────────────────────── */
       const res = await fetch('/api/agent', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url, prompt, includeScreenshot: withShot }),
       });
 
-      const json: AgentResponse = await res.json();
+      const text = await res.text();
+      if (!res.headers.get('content-type')?.includes('application/json')) {
+        throw new Error('API returned non-JSON response');
+      }
+      const json: AgentResponse = JSON.parse(text);
+
       if (!res.ok) throw new Error(json.error || 'Request failed');
       setResponse(json);
     } catch (err) {
@@ -45,7 +52,28 @@ export default function Home() {                    // ← default export is a c
       <h1 className="text-4xl font-extrabold mb-10 bg-gradient-to-r from-black via-yellow-400 to-orange-500 bg-clip-text text-transparent">
         BrowserBot
       </h1>
-
+{/* ── Prompt-tips accordion ───────────────────────────── */}
+      <button
+        onClick={() => setTipsOpen(!tipsOpen)}
+        className="mb-4 text-sm text-indigo-700 underline"
+      >
+        {tipsOpen ? 'Hide prompt tips ▲' : 'Show prompt tips ▼'}
+      </button>
+      {tipsOpen && (
+        <div className="w-full max-w-xl bg-white shadow rounded-md p-4 mb-6 text-sm text-gray-800">
+          <p className="font-semibold mb-1">Write detailed, step-by-step prompts:</p>
+          <ul className="list-disc pl-6 space-y-1">
+            <li>Mention menu clicks or buttons in order.</li>
+            <li>Include wait conditions (e.g. “wait until URL contains /contact”).</li>
+            <li>Specify exact field values to type.</li>
+            <li>End with what proof you need (e.g. a screenshot).</li>
+          </ul>
+          <p className="mt-2 italic">
+            Example: “Open Contact from header ▸ fill form ▸ submit ▸ screenshot
+            confirmation banner.”
+          </p>
+        </div>
+      )}
       {/* card */}
       <form
         onSubmit={handleSubmit}

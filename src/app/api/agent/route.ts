@@ -1,72 +1,112 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { createBrowserContext } from '@/utils/browser';
+import OpenAI from 'openai';
+
 export const runtime = 'nodejs';
 export const memory = 1024;
 export const maxDuration = 60;
 
-import { NextRequest, NextResponse } from 'next/server';
-import chromium from '@sparticuz/chromium';
-import puppeteer from 'puppeteer-core';  // ← ONLY puppeteer-core
-
-type AgentBody = { url: string; includeScreenshot?: boolean };
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 export async function POST(req: NextRequest) {
-  let browser: any = null;
-  let shotFilled: string | undefined;
-  let shotSubmitted: string | undefined;
+  const { url, prompt, includeScreenshot = false } = await req.json();
 
+  if (!url || !prompt) {
+    return NextResponse.json(
+      { status: 'failed', error: 'url & prompt are required' },
+      { status: 400 },
+    );
+  }
+
+  const { browser } = await createBrowserContext();
   try {
-    const { url, includeScreenshot = false } = (await req.json()) as AgentBody;
-    if (!url) {
-      return NextResponse.json({ error: 'URL is required' }, { status: 400 });
-    }
-
-    // Use puppeteer with @sparticuz/chromium (no Playwright imports)
-    browser = await puppeteer.launch({
-      args: chromium.args,
-      executablePath: await chromium.executablePath(),
-      headless: true,
-      defaultViewport: { width: 1280, height: 720 }
-    });
-
     const page = await browser.newPage();
-    await page.goto(url, { waitUntil: 'networkidle0', timeout: 60000 });
+    await page.goto(url, { waitUntil: 'networkidle0', timeout: 60_000 });
 
-    // Navigate and fill form
-    const signUpLinkSelector = 'a[href*="signup"]';
-    await page.waitForSelector(signUpLinkSelector, { timeout: 10000 });
-    await page.click(signUpLinkSelector);
-    await page.waitForNavigation({ waitUntil: 'networkidle0', timeout: 10000 });
+    const dom = await page.content();
+    const shot = includeScreenshot
+      ? await page.screenshot({ encoding: 'base64' })
+      : undefined;
 
-    await page.waitForSelector('input[placeholder*="full name"]', { timeout: 10000 });
-    await page.type('input[placeholder*="full name"]', 'John Doe');
-    await page.type('input[placeholder*="email address"]', 'testuser@example.com');  
-    await page.type('input[placeholder*="password"]', 'Test@1234');
+    /* ── LLM prompt ── */
+    const system = `You are an autonomous browser agent.
+Return strict JSON: {"js":"<code>","explanation":"<text>"}`;
+    const user = `DOM:\n${dom.slice(0, 20000)}\n${shot ? 'SCREENSHOT:' + shot.slice(0, 100) + '…' : ''}\nTASK: "${prompt}"`;
+const userPrompt = `
+DOM:
+${dom.slice(0, 20_000)}              /* truncated to keep prompt small */
+${shot ? `SCREENSHOT_BASE64:${shot.slice(0, 100)}…` : ''}
+TASK: "${prompt}"
+`;
+    /* ── 3️⃣ ask GPT-4o what JS to run ───────────────────────── */
+const chat = await openai.chat.completions.create({
+  model: 'gpt-4o',
+  response_format: { type: 'json_object' },   // ← forces valid JSON
+  messages: [
+    {
+      role: 'system',
+      content:
+        'You are an autonomous browser agent. ' +
+        'Return ONLY valid JSON shaped exactly as ' +
+        '{"js":"<code>","explanation":"<text>"} — no extra keys, no prose.',
+    },
+    { role: 'user', content: userPrompt },
+  ],
+  temperature: 0.2,
+});
 
-    if (includeScreenshot) {
-      shotFilled = (await page.screenshot({ fullPage: true })).toString('base64');
+
+    let plan: any = {};
+    try {
+      plan = JSON.parse(chat.choices[0].message.content || '{}');
+    } catch {
+      return NextResponse.json(
+        { status: 'failed', error: 'LLM response was not JSON' },
+        { status: 500 },
+      );
+    }
+    if (!plan.js) {
+      return NextResponse.json(
+        { status: 'failed', error: 'LLM response missing "js"' },
+        { status: 500 },
+      );
     }
 
-    await page.click('button[type="submit"]');
-    await page.waitForTimeout(2000);
-
-    if (includeScreenshot) {
-      shotSubmitted = (await page.screenshot({ fullPage: true })).toString('base64');
+    /* ── execute GPT’s script safely ──────────────────────────── */
+await page.evaluate(`
+  try {
+    ${plan.js}
+  } catch (err) {
+    console.error('GPT script error:', err?.message);
+  }
+`);
+await Promise.all([
+  page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 15_000 }).catch(() => {}),
+  page.evaluate(`
+    try {
+      ${plan.js}
+    } catch (err) {
+      console.error('GPT script error:', err?.message);
     }
+  `),
+]);
 
-    await browser.close();
+
+    const finalShot = includeScreenshot
+      ? await page.screenshot({ encoding: 'base64' })
+      : undefined;
 
     return NextResponse.json({
-      message: 'Agent navigated, filled form, and submitted successfully.',
-      screenshotFilled: shotFilled,
-      screenshotSubmitted: shotSubmitted,
-      status: 'success'
+      status: 'success',
+      aiResponse: plan.explanation || 'Executed GPT instructions',
+      screenshot: finalShot,
     });
-
-  } catch (err: unknown) {
-    const error = err as Error;
-    if (browser) await browser.close();
+  } catch (err: any) {
     return NextResponse.json(
-      { error: error.message || 'Unknown error', status: 'failed' },
-      { status: 500 }
+      { status: 'failed', error: err.message },
+      { status: 500 },
     );
+  } finally {
+    await browser.close();
   }
 }
