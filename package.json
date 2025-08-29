@@ -9,14 +9,14 @@
     "lint": "eslint"
   },
   "dependencies": {
-    "@sparticuz/chromium": "^138.0.2",
+    "@sparticuz/chromium": "122.0.0",
     "autoprefixer": "^10.4.21",
     "firebase": "^12.1.0",
     "firebase-admin": "^13.4.0",
     "next": "15.5.0",
     "openai": "^5.15.0",
     "postcss": "^8.5.6",
-    "puppeteer": "^24.17.0",
+    "puppeteer": "22.5.0",
     "react": "19.1.0",
     "react-dom": "19.1.0"
   },
