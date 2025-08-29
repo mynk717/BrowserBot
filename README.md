@@ -1,3 +1,8 @@
+## DemoLink (Youtube)
+https://youtu.be/sLWyQY2R3jM
+
+Vercel: https://browser-bot.vercel.app/
+---
 ## BrowserBot
 
 **BrowserBot** is an **AI-powered browser automation tool** that allows you to interact with any website programmatically using natural language prompts. It leverages a combination of **Puppeteer** for browser control and **OpenAI's GPT models** to dynamically generate navigation and interaction scripts based on the page content.
